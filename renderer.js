@@ -3,6 +3,7 @@ const storageKey = 'ai-code-desk-sessions-v1';
 let folder = '', current = '', officeCurrent = '', officePreview = '', officeEdited = '', officeDeck = '', proposalId = '', backupId = '', busy = false, permissionMode = 'view';
 let sessions = [], activeId = '', currentRequestId = '';
 let workspaces = [];
+let uploads = [];
 const pendingToolSessions = new Map();
 const pendingAssistants = new Map();
 try { sessions = JSON.parse(localStorage.getItem(storageKey) || '[]'); if (!Array.isArray(sessions)) sessions = []; } catch { sessions = []; }
@@ -99,7 +100,17 @@ function renderMessages() {
   const s = active(), list = $('messages'); list.replaceChildren();
   $('chatTitle').textContent = s?.title || '新会话';
   if (!s || !s.messages.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.innerHTML = '<div class="empty-symbol">✦</div><strong>今天想做点什么？</strong><p>打开左侧项目文件夹，提到文件名即可让 AI 读取。<br>文件修改会先生成预览，由你确认后应用。</p>'; list.append(empty); return; }
-  for (const m of s.messages) { const box = document.createElement('div'); box.className = 'message ' + m.role; const label = document.createElement('div'); label.className = 'author'; label.textContent = m.role === 'user' ? '你' : m.role === 'activity' ? '终端活动' : 'AI Code Desk'; const body = document.createElement('div'); body.className = 'message-body'; body.textContent = m.content; box.append(label, body); list.append(box); }
+  for (const m of s.messages) {
+    const box = document.createElement('div'); box.className = 'message ' + m.role;
+    const label = document.createElement('div'); label.className = 'author'; label.textContent = m.role === 'user' ? '你' : m.role === 'activity' ? '终端活动' : 'AI Code Desk';
+    const body = document.createElement('div'); body.className = 'message-body';
+    if (Array.isArray(m.content)) {
+      const texts = m.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+      const imgs = m.content.filter(p => p.type === 'image_url').length;
+      body.textContent = texts + (imgs ? (texts ? '\n' : '') + '[已上传 ' + imgs + ' 张图片]' : '');
+    } else body.textContent = m.content;
+    box.append(label, body); list.append(box);
+  }
   list.scrollTop = list.scrollHeight;
 }
 function makeRow(item, holder) {
@@ -119,15 +130,52 @@ $('propose').onclick = () => run(async () => { if (!current) throw Error('请先
 $('apply').onclick = () => run(async () => { if (!proposalId) throw Error('没有可应用的修改预览。'); const result = await window.desk.apply(proposalId); proposalId = ''; backupId = result.backupId; $('preview').hidden = true; $('undoPanel').hidden = false; $('source').textContent = (await window.desk.read(current)).text; notice('修改已应用。'); });
 $('discard').onclick = () => { proposalId = ''; $('preview').hidden = true; notice('已放弃预览，文件未改变。'); };
 $('undo').onclick = () => run(async () => { await window.desk.undo(backupId); backupId = ''; $('undoPanel').hidden = true; $('source').textContent = (await window.desk.read(current)).text; notice('已恢复修改前的文件。'); });
+function buildUploadContent(input) {
+  const texts = uploads.filter(u => u.kind === 'text');
+  const images = uploads.filter(u => u.kind === 'image').slice(0, 4);
+  let head = input;
+  if (texts.length) {
+    head += (head ? '\n\n' : '') + '[用户上传的文件]\n' + texts.map(u => '《' + u.name + '》\n' + u.text).join('\n\n');
+  }
+  if (images.length) {
+    const parts = [{ type: 'text', text: head || '请识别这些图片。' }];
+    for (const img of images) parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+    return parts;
+  }
+  return head;
+}
+function renderUploads() {
+  const holder = $('uploads');
+  holder.replaceChildren();
+  holder.hidden = uploads.length === 0;
+  uploads.forEach((u, i) => {
+    const chip = document.createElement('span'); chip.className = 'upload-chip';
+    const icon = document.createElement('span'); icon.className = 'upload-icon'; icon.textContent = u.kind === 'image' ? '🖼' : '📄';
+    const label = document.createElement('span'); label.className = 'upload-name'; label.textContent = u.name; label.title = u.name + (u.note ? '\n' + u.note : '');
+    const x = document.createElement('button'); x.className = 'upload-remove'; x.textContent = '✕'; x.title = '移除';
+    x.onclick = () => { uploads.splice(i, 1); renderUploads(); };
+    chip.append(icon, label, x); holder.append(chip);
+  });
+}
+$('attachButton').onclick = () => run(async () => {
+  const file = await window.desk.uploadFile();
+  if (!file) return;
+  uploads.push(file);
+  renderUploads();
+  notice('已附加：' + file.name + (file.note ? '（' + file.note + '）' : ''));
+});
 async function send() {
   const input = $('chatInput').value.trim();
-  if (!input) return;
+  if (!input && !uploads.length) return;
   if ($('includeFile').checked && !current) throw Error('请先选择文件，或取消“始终附带当前文件”。');
   const s = active();
   const requestId = crypto.randomUUID();
   currentRequestId = requestId;
-  const userEntry = { role: 'user', content: input };
+  const userEntry = { role: 'user', content: buildUploadContent(input) };
   const assistantEntry = { role: 'assistant', content: '' };
+  const sentUploads = uploads;
+  uploads = [];
+  renderUploads();
   $('chatInput').value = '';
   s.messages.push(userEntry, assistantEntry);
   if (s.title === '新会话') s.title = input.slice(0, 30);
@@ -144,6 +192,7 @@ async function send() {
     notice(result.files.length ? '已读取并发送文件：' + result.files.join('、') : (result.stopped ? '已停止生成。' : '回复完成。'));
   } catch (e) {
     s.messages = s.messages.filter(m => m !== userEntry && m !== assistantEntry);
+    uploads = sentUploads; renderUploads();
     persist(); renderMessages(); $('chatInput').value = input;
     throw e;
   } finally {

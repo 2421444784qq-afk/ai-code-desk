@@ -11,7 +11,7 @@
   <div id="workspaces" class="workspaces"></div>
   <div id="workspaceName" class="workspace-name">尚未打开文件夹</div><div id="root" class="root-path"></div>
   <div id="files" class="file-tree"></div>
-  <div class="sidebar-bottom"><span class="user-dot">●</span> 本地工作区 <span class="version">v0.6</span></div>
+  <div class="sidebar-bottom"><span class="user-dot">●</span> 本地工作区 <span class="version">v0.7</span></div>
 </aside>
 <div class="main-area">
   <header class="topbar"><div class="title-wrap"><div id="chatTitle" class="chat-title">新会话</div><div id="subtitle" class="subtitle">选择项目文件夹，或直接开始对话</div></div><button id="settingsButton" class="quiet-button">⚙ 连接设置</button></header>
@@ -20,8 +20,8 @@
   <section id="settingsPanel" class="settings-panel" hidden><div class="settings-head"><strong>模型连接</strong><span>密钥保存在本机</span></div>
     <div class="settings-grid"><label>API 地址<input id="baseUrl" placeholder="https://api.example.com/v1"></label><label>模型名<input id="model" placeholder="模型 ID"></label><label>API Key<input id="key" type="password" placeholder="已保存时留空即可"></label><button id="save" class="primary">保存连接</button></div></section>
   <section id="chatView" class="chat-view"><div id="messages" class="messages"></div>
-    <div class="composer-wrap"><div class="composer"><textarea id="chatInput" placeholder="发送消息，或提到 function.txt 来读取项目文件…"></textarea>
-      <div class="composer-bottom"><label class="include"><input type="checkbox" id="includeFile"> 始终附带当前文件</label><div class="composer-actions"><span id="currentContext">提到文件名时自动读取</span>
+    <div class="composer-wrap"><div class="composer"><div id="uploads" class="uploads" hidden></div><textarea id="chatInput" placeholder="发送消息，或提到 function.txt 来读取项目文件…"></textarea>
+      <div class="composer-bottom"><button id="attachButton" class="attach-button" title="上传文件（TXT/MD/PY/DOCX/PDF/PNG/JPG/XLSX/PPTX）">📎</button><label class="include"><input type="checkbox" id="includeFile"> 始终附带当前文件</label><div class="composer-actions"><span id="currentContext">提到文件名时自动读取</span>
       <div class="permission-wrap"><button id="permissionButton" class="permission-button" aria-haspopup="menu" aria-expanded="false" title="选择文件操作权限"><span id="permissionIcon">♢</span><span id="permissionLabel">仅可查看</span><span class="chevron">⌄</span></button>
         <div id="permissionMenu" class="permission-menu" role="menu" hidden>
           <button class="permission-option" data-mode="view" role="menuitemradio"><span class="permission-glyph">♢</span><span class="permission-copy"><strong>仅可查看</strong></span><span class="permission-check">✓</span></button>

@@ -23,3 +23,11 @@
 .session-delete,.workspace-delete{flex:none;border:0;background:transparent;color:#9aa6b8;font-size:11px;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .12s}
 .session-item:hover .session-delete,.workspace-item:hover .workspace-delete{opacity:1}
 .session-delete:hover,.workspace-delete:hover{background:#f3d8dc;color:#b14c5b}
+.attach-button{border:1px solid #d9dee8;border-radius:8px;background:#fff;color:#56657a;font-size:15px;padding:5px 9px;line-height:1;flex:none}
+.attach-button:hover{background:#edf1fb}
+.uploads{display:flex;flex-wrap:wrap;gap:6px;padding:2px 2px 8px}
+.upload-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #dbe3f0;background:#f4f7fd;border-radius:999px;padding:4px 6px 4px 10px;font-size:12px;color:#405679;max-width:260px}
+.upload-icon{font-size:13px}
+.upload-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+.upload-remove{border:0;background:transparent;color:#9aa6b8;font-size:11px;padding:2px 5px;border-radius:50%}
+.upload-remove:hover{background:#f3d8dc;color:#b14c5b}

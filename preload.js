@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('desk', {
   removeFolder: (path) => ipcRenderer.invoke('folder:remove', path),
   list: (relative) => ipcRenderer.invoke('folder:list', relative),
   read: (relative) => ipcRenderer.invoke('file:read', relative),
+  uploadFile: () => ipcRenderer.invoke('file:upload'),
   inspectOffice: (relative) => ipcRenderer.invoke('office:inspect', relative),
   exportOffice: (relative) => ipcRenderer.invoke('office:export', relative),
   editOffice: (relative, kind, spec) => ipcRenderer.invoke('office:edit', relative, kind, spec),

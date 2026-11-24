@@ -1,6 +1,6 @@
 {
   "name": "ai-code-desk",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "本地 Windows AI 编程客户端：聊天、文件修改、终端执行、后台任务与 Office 副本编辑",
   "author": "GuoChao",
@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check task-manager.js && node --check task-worker.js && node --check terminal-runner.js && node --check office-tools.js && node --check project-context.js && node --check asar-path.js",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check task-manager.js && node --check task-worker.js && node --check terminal-runner.js && node --check office-tools.js && node --check project-context.js && node --check asar-path.js && node --check file-parser.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win"
   },
@@ -32,6 +32,7 @@
       "office-bridge.ps1",
       "office-diagram.ps1",
       "asar-path.js",
+      "file-parser.js",
       "build/icon.ico"
     ],
     "asarUnpack": [

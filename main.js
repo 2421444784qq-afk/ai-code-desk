@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, safeStorage, screen, shell } = require('electron');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createPatch } = require('diff');
@@ -7,6 +8,24 @@ const { mentionedFiles } = require('./project-context');
 const { runTerminal } = require('./terminal-runner');
 const { createTaskManager } = require('./task-manager');
 const { runOffice, runOfficeEdit, addFlowSlide } = require('./office-tools');
+const { parseFile } = require('./file-parser');
+// 统一数据目录：开发版（npm start）与打包版（安装版/便携版）共用同一个固定位置，
+// 避免便携版把数据写进每次运行后被删除的临时目录导致会话/配置丢失。
+const legacyUserDataDir = path.join(app.getPath('appData'), 'ai-code-desk');
+const stableUserDataDir = path.join(app.getPath('appData'), 'AI Code Desk');
+app.setPath('userData', stableUserDataDir);
+(function migrateLegacyUserData() {
+  try {
+    if (!fsSync.existsSync(legacyUserDataDir) || !fsSync.statSync(legacyUserDataDir).isDirectory()) return;
+    fsSync.mkdirSync(stableUserDataDir, { recursive: true });
+    for (const entry of fsSync.readdirSync(legacyUserDataDir)) {
+      const from = path.join(legacyUserDataDir, entry);
+      const to = path.join(stableUserDataDir, entry);
+      if (fsSync.existsSync(to)) continue;
+      fsSync.cpSync(from, to, { recursive: true });
+    }
+  } catch {}
+})();
 const tasks = () => createTaskManager(app.getPath('userData'));
 
 let win, proposal, lastBackup;
@@ -273,6 +292,15 @@ ipcMain.handle('file:read', async (_, relative) => {
   const file = await readText(relative);
   return { relative: file.relative, text: file.text, hash: file.hash };
 });
+ipcMain.handle('file:upload', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: '上传文件给 AI 解析',
+    properties: ['openFile'],
+    filters: [{ name: '支持的文件（文本/DOCX/PDF/XLSX/PPTX/图片）', extensions: ['txt', 'md', 'py', 'js', 'ts', 'json', 'csv', 'log', 'html', 'css', 'yaml', 'yml', 'ini', 'sql', 'sh', 'ps1', 'docx', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'xlsx', 'pptx'] }]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return parseFile(result.filePaths[0]);
+});
 ipcMain.handle('office:inspect', async (_, relative) => runOffice('inspect', await within(relative)));
 ipcMain.handle('office:export', async (_, relative) => {
   const input = await within(relative);
@@ -349,8 +377,25 @@ const terminalTools = [{
 ];
 ipcMain.handle('ai:chat', async (event, messages, selected, forceSelected, requestId) => {
   if (!Array.isArray(messages) || messages.length > 30) fail('会话过长，请重新开始。');
-  const safe = messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 12000) }));
-  const question = safe.at(-1)?.content || '';
+  const capText = t => String(t || '').slice(0, 24000);
+  const safe = messages.map(m => {
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    if (Array.isArray(m.content)) {
+      const parts = m.content.slice(0, 12).map(p => {
+        if (p.type === 'image_url' && p.image_url && typeof p.image_url.url === 'string') {
+          const url = p.image_url.url;
+          if (!url.startsWith('data:image/')) return null;
+          if (url.length > 2500000) return null;
+          return { type: 'image_url', image_url: { url } };
+        }
+        return { type: 'text', text: capText(p.text) };
+      }).filter(Boolean);
+      return { role, content: parts };
+    }
+    return { role, content: capText(m.content) };
+  });
+  const lastContent = safe.at(-1)?.content;
+  const question = Array.isArray(lastContent) ? lastContent.filter(p => p.type === 'text').map(p => p.text).join(' ') : (lastContent || '');
   const names = activeRoot ? await mentionedFiles(activeRoot, question, selected, forceSelected) : [];
   let context = '', totalBytes = 0;
   for (const name of names) {
