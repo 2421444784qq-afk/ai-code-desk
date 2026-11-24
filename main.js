@@ -102,8 +102,9 @@ async function streamRequest(messages, tools, requestId, sender, external) {
   const controller = new AbortController();
   inflight.set(requestId, controller);
   let stopped = false;
+  const externalSignal = external && typeof external.addEventListener === 'function' ? external : external?.signal;
   const onAbort = () => { stopped = true; controller.abort(); };
-  external?.addEventListener('abort', onAbort);
+  externalSignal?.addEventListener('abort', onAbort);
   let timer = setTimeout(() => controller.abort(), 120000);
   const touch = () => { clearTimeout(timer); timer = setTimeout(() => controller.abort(), 120000); };
   let full = '', raw = '', frames = 0;
@@ -183,7 +184,7 @@ async function streamRequest(messages, tools, requestId, sender, external) {
     throw err;
   } finally {
     clearTimeout(timer); inflight.delete(requestId);
-    external?.removeEventListener('abort', onAbort);
+    externalSignal?.removeEventListener('abort', onAbort);
   }
 }
 async function within(relative) {
@@ -399,7 +400,23 @@ ipcMain.handle('ai:chat', async (event, messages, selected, forceSelected, reque
   const names = activeRoot ? await mentionedFiles(activeRoot, question, selected, forceSelected) : [];
   let context = '', totalBytes = 0;
   for (const name of names) {
-    if (/\.(docx?|xlsx?|xlsm|pptx?|vsdx?)$/i.test(name)) { context += '\n<office_file path="' + name.replace(/"/g, '&quot;') + '" />'; continue; }
+    if (/\.(docx?|xlsx?|xlsm|pptx?|pdf)$/i.test(name)) {
+      // 工作区里提到的 Office/PDF 文件：直接解析正文附上（受总量限制），而不是只给占位标记。
+      try {
+        const parsed = await parseFile(await within(name));
+        if (parsed.kind === 'text' && parsed.text) {
+          const text = parsed.text.slice(0, 60000);
+          const bytes = Buffer.byteLength(text, 'utf8');
+          if (totalBytes + bytes > 120000) { context += '\n<office_file path="' + name.replace(/"/g, '&quot;') + '" note="内容过大未全部附上，可用上传按钮单独读取" />'; continue; }
+          totalBytes += bytes;
+          context += '\n<project_file path="' + name.replace(/"/g, '&quot;') + '">\n' + text + '\n</project_file>';
+          continue;
+        }
+      } catch {}
+      context += '\n<office_file path="' + name.replace(/"/g, '&quot;') + '" />';
+      continue;
+    }
+    if (/\.(vsdx?|vsd)$/i.test(name)) { context += '\n<office_file path="' + name.replace(/"/g, '&quot;') + '" />'; continue; }
     const file = await readText(name);
     totalBytes += Buffer.byteLength(file.text, 'utf8');
     if (totalBytes > 120000) fail('文件内容合计超过 120 KB，请缩小范围后重试。');
