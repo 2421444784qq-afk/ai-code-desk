@@ -13,3 +13,13 @@
 .office-flow{border-top:1px solid #e9edf3;margin-top:20px;padding-top:14px;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}.office-flow h3{width:100%;font-size:14px;margin:0;color:#354561}.office-flow input,.office-flow textarea{width:100%;border:1px solid #d9e2ee;border-radius:8px;padding:10px;color:#27344a;background:#fff}.office-flow textarea{min-height:95px;resize:vertical}.office-flow button{margin-top:2px}
 .send.stop{background:#b14c5b}
 .office-flow input{min-width:220px}
+.workspaces{max-height:150px;overflow:auto;margin-top:2px}
+.workspace-item{display:flex;align-items:center;gap:2px}
+.workspace-row{flex:1;min-width:0;display:block;border:0;background:transparent;color:#4c5669;border-radius:8px;text-align:left;padding:8px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.workspace-row:hover{background:#edf1fb}
+.workspace-row.active{background:#e7edff;color:#3157c5;font-weight:650}
+.session-item{display:flex;align-items:center;gap:2px}
+.session-item .session-row{flex:1;min-width:0}
+.session-delete,.workspace-delete{flex:none;border:0;background:transparent;color:#9aa6b8;font-size:11px;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .12s}
+.session-item:hover .session-delete,.workspace-item:hover .workspace-delete{opacity:1}
+.session-delete:hover,.workspace-delete:hover{background:#f3d8dc;color:#b14c5b}

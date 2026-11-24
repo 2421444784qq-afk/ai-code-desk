@@ -9,7 +9,22 @@ const { createTaskManager } = require('./task-manager');
 const { runOffice, runOfficeEdit, addFlowSlide } = require('./office-tools');
 const tasks = () => createTaskManager(app.getPath('userData'));
 
-let win, projectRoot, proposal, lastBackup;
+let win, proposal, lastBackup;
+let workspaces = [], activeRoot = null;
+const WORKSPACE_LIMIT = 12;
+const workspaceList = () => workspaces.map(w => ({ name: path.basename(w), path: w }));
+async function saveWorkspaceState() {
+  const config = await getConfig();
+  await fs.writeFile(configPath(), JSON.stringify({ ...config, workspaces, activeRoot, lastProjectRoot: activeRoot }), { mode: 0o600 });
+}
+async function ensureWorkspacesLoaded() {
+  if (workspaces.length) return;
+  const config = await getConfig();
+  const saved = Array.isArray(config.workspaces) ? config.workspaces.filter(x => typeof x === 'string' && x) : [];
+  const legacy = typeof config.lastProjectRoot === 'string' && config.lastProjectRoot ? [config.lastProjectRoot] : [];
+  workspaces = [...new Set([...saved, ...legacy])].slice(0, WORKSPACE_LIMIT);
+  activeRoot = config.activeRoot && workspaces.includes(config.activeRoot) ? config.activeRoot : (workspaces[0] || null);
+}
 const officePreviews = new Set();
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 const backupsPath = () => path.join(app.getPath('userData'), 'backups');
@@ -153,13 +168,13 @@ async function streamRequest(messages, tools, requestId, sender, external) {
   }
 }
 async function within(relative) {
-  if (!projectRoot) fail('请先打开项目文件夹。');
+  if (!activeRoot) fail('请先打开项目文件夹。');
   if (typeof relative !== 'string' || path.isAbsolute(relative)) fail('无效的文件路径。');
-  const full = path.resolve(projectRoot, relative);
-  const rel = path.relative(projectRoot, full);
+  const full = path.resolve(activeRoot, relative);
+  const rel = path.relative(activeRoot, full);
   if (rel.startsWith('..') || path.isAbsolute(rel)) fail('文件超出项目文件夹。');
   const real = await fs.realpath(full);
-  const realRel = path.relative(projectRoot, real);
+  const realRel = path.relative(activeRoot, real);
   if (realRel.startsWith('..') || path.isAbsolute(realRel)) fail('符号链接指向项目文件夹之外。');
   return real;
 }
@@ -206,32 +221,52 @@ ipcMain.handle('config:save', async (_, data) => {
   await fs.writeFile(configPath(), JSON.stringify(next), { mode: 0o600 });
   return publicConfig(next);
 });
+ipcMain.handle('folder:workspaces', async () => {
+  await ensureWorkspacesLoaded();
+  return { workspaces: workspaceList(), active: activeRoot };
+});
 ipcMain.handle('folder:choose', async () => {
+  await ensureWorkspacesLoaded();
   const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   if (result.canceled) return null;
-  projectRoot = await fs.realpath(result.filePaths[0]);
-  proposal = null; lastBackup = null;
-  const config = await getConfig();
-  await fs.writeFile(configPath(), JSON.stringify({ ...config, lastProjectRoot: projectRoot }), { mode: 0o600 });
-  return projectRoot;
+  const root = await fs.realpath(result.filePaths[0]);
+  workspaces = [root, ...workspaces.filter(x => x !== root)].slice(0, WORKSPACE_LIMIT);
+  activeRoot = root; proposal = null; lastBackup = null;
+  await saveWorkspaceState();
+  return { root, workspaces: workspaceList() };
+});
+ipcMain.handle('folder:select', async (_, root) => {
+  await ensureWorkspacesLoaded();
+  if (typeof root !== 'string' || !root) fail('无效的工作区。');
+  const real = await fs.realpath(root).catch(() => fail('工作区不存在：' + root));
+  if (!workspaces.includes(real)) fail('这个工作区不在列表里。');
+  activeRoot = real; proposal = null; lastBackup = null;
+  await saveWorkspaceState();
+  return { root: real, workspaces: workspaceList() };
+});
+ipcMain.handle('folder:remove', async (_, root) => {
+  await ensureWorkspacesLoaded();
+  if (typeof root !== 'string' || !root) fail('无效的工作区。');
+  workspaces = workspaces.filter(x => x !== root);
+  if (activeRoot === root) { activeRoot = workspaces[0] || null; proposal = null; lastBackup = null; }
+  await saveWorkspaceState();
+  return { workspaces: workspaceList(), active: activeRoot };
 });
 ipcMain.handle('folder:current', async () => {
-  if (projectRoot) return projectRoot;
-  const previous = (await getConfig()).lastProjectRoot;
-  if (!previous) return null;
-  try {
-    const real = await fs.realpath(previous);
-    if (!(await fs.stat(real)).isDirectory()) return null;
-    projectRoot = real;
-    return projectRoot;
-  } catch { return null; }
+  await ensureWorkspacesLoaded();
+  if (activeRoot) { const stat = await fs.stat(activeRoot).catch(() => null); if (stat && stat.isDirectory()) return activeRoot; }
+  for (const w of workspaces) {
+    const stat = await fs.stat(w).catch(() => null);
+    if (stat && stat.isDirectory()) { activeRoot = w; await saveWorkspaceState(); return w; }
+  }
+  return null;
 });
 ipcMain.handle('folder:list', async (_, relative = '') => {
   const dir = await within(relative);
   if (!(await fs.stat(dir)).isDirectory()) fail('不是文件夹。');
   const entries = await fs.readdir(dir, { withFileTypes: true });
   return entries.filter(x => !x.isSymbolicLink() && !['node_modules', '.git', '.venv'].includes(x.name))
-    .slice(0, 300).map(x => ({ name: x.name, directory: x.isDirectory(), relative: path.relative(projectRoot, path.join(dir, x.name)) }))
+    .slice(0, 300).map(x => ({ name: x.name, directory: x.isDirectory(), relative: path.relative(activeRoot, path.join(dir, x.name)) }))
     .sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
 });
 ipcMain.handle('file:read', async (_, relative) => {
@@ -316,7 +351,7 @@ ipcMain.handle('ai:chat', async (event, messages, selected, forceSelected, reque
   if (!Array.isArray(messages) || messages.length > 30) fail('会话过长，请重新开始。');
   const safe = messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 12000) }));
   const question = safe.at(-1)?.content || '';
-  const names = projectRoot ? await mentionedFiles(projectRoot, question, selected, forceSelected) : [];
+  const names = activeRoot ? await mentionedFiles(activeRoot, question, selected, forceSelected) : [];
   let context = '', totalBytes = 0;
   for (const name of names) {
     if (/\.(docx?|xlsx?|xlsm|pptx?|vsdx?)$/i.test(name)) { context += '\n<office_file path="' + name.replace(/"/g, '&quot;') + '" />'; continue; }
@@ -354,8 +389,8 @@ ipcMain.handle('ai:chat', async (event, messages, selected, forceSelected, reque
           label = name + ': ' + String(args.command || args.task_id || args.path || '').slice(0, 300);
           event.sender.send('ai:tool-event', { requestId, stage: 'running', command: label });
           const manager = tasks();
-          if (name === 'run_terminal') result = await runTerminal(String(args.command || ''), args.cwd, projectRoot);
-          if (name === 'start_task') result = await manager.start(String(args.command || ''), args.cwd || projectRoot, args.expected_artifacts || []);
+          if (name === 'run_terminal') result = await runTerminal(String(args.command || ''), args.cwd, activeRoot);
+          if (name === 'start_task') result = await manager.start(String(args.command || ''), args.cwd || activeRoot, args.expected_artifacts || []);
           if (name === 'list_tasks') result = await manager.list();
           if (name === 'inspect_task') result = await manager.inspect(args.task_id);
           if (name === 'stop_task') result = await manager.stop(args.task_id);
@@ -415,12 +450,12 @@ ipcMain.handle('ai:propose', async (_, relative, instruction) => {
   if (!match) fail('模型没有按要求返回完整文件，未生成可应用的修改。');
   const after = match[1].replace(/^\r?\n/, '');
   if (Buffer.byteLength(after, 'utf8') > 200000) fail('修改后文件超过 200 KB。');
-  proposal = { id: crypto.randomUUID(), root: projectRoot, relative, beforeHash: selected.hash, after };
+  proposal = { id: crypto.randomUUID(), root: activeRoot, relative, beforeHash: selected.hash, after };
   return { id: proposal.id, relative, changed: selected.text !== after, diff: buildDiff(selected.text, after, relative) };
 });
 ipcMain.handle('file:apply', async (_, id) => {
   if (publicConfig(await getConfig()).permissionMode === 'view') fail('仅可查看模式不允许写入文件。');
-  if (!proposal || proposal.id !== id || proposal.root !== projectRoot) fail('修改预览已失效，请重新生成。');
+  if (!proposal || proposal.id !== id || proposal.root !== activeRoot) fail('修改预览已失效，请重新生成。');
   const current = await readText(proposal.relative);
   if (current.hash !== proposal.beforeHash) fail('文件已被其他程序修改，请重新读取并生成预览。');
   const backupId = crypto.randomUUID();
@@ -430,13 +465,13 @@ ipcMain.handle('file:apply', async (_, id) => {
   const temp = current.full + '.ai-code-desk-' + backupId + '.tmp';
   try { await fs.writeFile(temp, proposal.after, { flag: 'wx' }); await fs.rename(temp, current.full); }
   catch (err) { await fs.rm(temp, { force: true }); throw err; }
-  lastBackup = { id: backupId, root: projectRoot, relative: proposal.relative, hash: digest(Buffer.from(proposal.after)), path: backup };
+  lastBackup = { id: backupId, root: activeRoot, relative: proposal.relative, hash: digest(Buffer.from(proposal.after)), path: backup };
   proposal = null;
   return { backupId, relative: lastBackup.relative };
 });
 ipcMain.handle('file:undo', async (_, id) => {
   if (publicConfig(await getConfig()).permissionMode === 'view') fail('仅可查看模式不允许写入文件，请先切换权限模式。');
-  if (!lastBackup || lastBackup.id !== id || lastBackup.root !== projectRoot) fail('没有可撤销的修改。');
+  if (!lastBackup || lastBackup.id !== id || lastBackup.root !== activeRoot) fail('没有可撤销的修改。');
   const current = await readText(lastBackup.relative);
   if (current.hash !== lastBackup.hash) fail('文件应用后又发生变化，无法安全撤销。');
   await fs.copyFile(lastBackup.path, current.full);

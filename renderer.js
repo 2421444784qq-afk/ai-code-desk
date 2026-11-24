@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 const storageKey = 'ai-code-desk-sessions-v1';
 let folder = '', current = '', officeCurrent = '', officePreview = '', officeEdited = '', officeDeck = '', proposalId = '', backupId = '', busy = false, permissionMode = 'view';
 let sessions = [], activeId = '', currentRequestId = '';
+let workspaces = [];
 const pendingToolSessions = new Map();
 const pendingAssistants = new Map();
 try { sessions = JSON.parse(localStorage.getItem(storageKey) || '[]'); if (!Array.isArray(sessions)) sessions = []; } catch { sessions = []; }
@@ -37,7 +38,57 @@ $('officeTab').onclick = () => tab('office');
 $('settingsButton').onclick = () => { $('settingsPanel').hidden = !$('settingsPanel').hidden; };
 function renderSessions() {
   const list = $('sessions'); list.replaceChildren();
-  for (const s of sessions) { const b = document.createElement('button'); b.className = 'session-row' + (s.id === activeId ? ' active' : ''); b.textContent = '☷  ' + s.title; b.title = s.title; b.onclick = () => { activeId = s.id; renderSessions(); renderMessages(); }; list.append(b); }
+  for (const s of sessions) {
+    const item = document.createElement('div'); item.className = 'session-item';
+    const b = document.createElement('button'); b.className = 'session-row' + (s.id === activeId ? ' active' : ''); b.textContent = '☷  ' + s.title; b.title = s.title;
+    b.onclick = () => { activeId = s.id; renderSessions(); renderMessages(); };
+    const del = document.createElement('button'); del.className = 'session-delete'; del.textContent = '✕'; del.title = '删除会话'; del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    item.append(b, del); list.append(item);
+  }
+}
+function deleteSession(id) {
+  const s = sessions.find(x => x.id === id);
+  if (!s) return;
+  if (!confirm('删除会话「' + (s.title || '新会话') + '」？此操作不可恢复。')) return;
+  sessions = sessions.filter(x => x.id !== id);
+  if (!sessions.length) { newSession(); return; }
+  if (activeId === id) activeId = sessions[0].id;
+  persist(); renderSessions(); renderMessages();
+}
+function renderWorkspaces() {
+  const list = $('workspaces'); list.replaceChildren();
+  for (const w of workspaces) {
+    const item = document.createElement('div'); item.className = 'workspace-item';
+    const b = document.createElement('button'); b.className = 'workspace-row' + (w.path === folder ? ' active' : ''); b.textContent = '▱  ' + w.name; b.title = w.path;
+    b.onclick = () => run(async () => {
+      if (w.path === folder) return;
+      const r = await window.desk.selectFolder(w.path);
+      folder = r.root; current = '';
+      await showFolder(r.root);
+      renderWorkspaces();
+    });
+    const del = document.createElement('button'); del.className = 'workspace-delete'; del.textContent = '✕'; del.title = '从列表移除（不删除磁盘文件）';
+    del.onclick = (e) => { e.stopPropagation(); run(async () => {
+      if (!confirm('从工作区列表移除「' + w.name + '」？\n磁盘上的文件不会被删除。')) return;
+      const r = await window.desk.removeFolder(w.path);
+      workspaces = r.workspaces;
+      if (r.active) { folder = r.active; await showFolder(r.active); }
+      else { folder = ''; clearWorkspaceView(); }
+      renderWorkspaces();
+    }); };
+    item.append(b, del); list.append(item);
+  }
+}
+function clearWorkspaceView() {
+  $('workspaceName').textContent = '尚未打开文件夹';
+  $('root').textContent = '';
+  $('files').replaceChildren();
+  $('selected').textContent = '未选择文件';
+  $('selectedBadge').textContent = '';
+  $('source').textContent = '选择左侧文件后查看内容。';
+  $('currentContext').textContent = '提到文件名时自动读取';
+  $('preview').hidden = true; $('undoPanel').hidden = true;
+  refreshOfficePanels();
 }
 function newSession() {
   const s = { id: crypto.randomUUID(), title: '新会话', messages: [] };
@@ -61,8 +112,8 @@ function makeRow(item, holder) {
   } else { row.onclick = () => run(async () => { const file = await window.desk.read(item.relative); current = file.relative; $('selected').textContent = current; $('selectedBadge').textContent = '· ' + item.name; $('source').textContent = file.text; $('currentContext').textContent = '当前：' + item.name; $('preview').hidden = true; proposalId = ''; document.querySelectorAll('.file-row.selected').forEach(x => x.classList.remove('selected')); row.classList.add('selected'); notice('已读取 ' + current); tab('editor'); }); }
 }
 async function listRoot() { const items = await window.desk.list(''); const tree = $('files'); tree.replaceChildren(); items.forEach(x => makeRow(x, tree)); }
-async function showFolder(chosen) { folder = chosen; current = ''; officeCurrent = ''; officePreview = ''; officeEdited = ''; proposalId = ''; backupId = ''; $('workspaceName').textContent = '▱  ' + chosen.split(/[\\/]/).filter(Boolean).at(-1); $('root').textContent = chosen; $('selected').textContent = '未选择文件'; $('selectedBadge').textContent = ''; $('source').textContent = '选择左侧文件后查看内容。'; $('currentContext').textContent = '提到文件名时自动读取'; $('preview').hidden = true; $('undoPanel').hidden = true; $('subtitle').textContent = chosen; refreshOfficePanels(); await listRoot(); notice('已打开项目：' + chosen); }
-$('folderButton').onclick = () => run(async () => { const chosen = await window.desk.chooseFolder(); if (chosen) await showFolder(chosen); });
+async function showFolder(chosen) { folder = chosen; current = ''; officeCurrent = ''; officePreview = ''; officeEdited = ''; proposalId = ''; backupId = ''; $('workspaceName').textContent = '▱  ' + chosen.split(/[\\/]/).filter(Boolean).at(-1); $('root').textContent = chosen; $('selected').textContent = '未选择文件'; $('selectedBadge').textContent = ''; $('source').textContent = '选择左侧文件后查看内容。'; $('currentContext').textContent = '提到文件名时自动读取'; $('preview').hidden = true; $('undoPanel').hidden = true; $('subtitle').textContent = chosen; refreshOfficePanels(); renderWorkspaces(); await listRoot(); notice('已打开项目：' + chosen); }
+$('folderButton').onclick = () => run(async () => { const r = await window.desk.chooseFolder(); if (!r) return; workspaces = r.workspaces; await showFolder(r.root); renderWorkspaces(); });
 $('save').onclick = () => run(async () => { const config = await window.desk.saveConfig({ baseUrl: $('baseUrl').value, model: $('model').value, key: $('key').value }); $('key').value = ''; $('key').placeholder = config.hasKey ? '已安全保存；留空保持原密钥' : 'API Key'; $('settingsPanel').hidden = true; notice('模型连接已保存。'); });
 $('propose').onclick = () => run(async () => { if (!current) throw Error('请先从左侧选择一个文本文件。'); notice('AI 正在生成修改建议…'); const result = await window.desk.propose(current, $('instruction').value); if (!result.changed) { notice('模型没有修改文件。'); return; } proposalId = result.id; $('diff').textContent = result.diff; $('preview').hidden = false; $('preview').scrollIntoView({ behavior: 'smooth' }); notice('请检查差异，确认后才会写入文件。'); });
 $('apply').onclick = () => run(async () => { if (!proposalId) throw Error('没有可应用的修改预览。'); const result = await window.desk.apply(proposalId); proposalId = ''; backupId = result.backupId; $('preview').hidden = true; $('undoPanel').hidden = false; $('source').textContent = (await window.desk.read(current)).text; notice('修改已应用。'); });
@@ -128,7 +179,12 @@ $('chatInput').onkeydown = e => { if (e.key === 'Enter' && e.ctrlKey) { e.preven
 if (!sessions.length) newSession(); else { activeId = sessions[0].id; renderSessions(); renderMessages(); }
 renderPermission();
 window.desk.config().then(c => { $('baseUrl').value = c.baseUrl; $('model').value = c.model; $('key').placeholder = c.hasKey ? '已安全保存；留空保持原密钥' : 'API Key'; if (!c.hasKey) $('settingsPanel').hidden = false; permissionMode = c.permissionMode || 'view'; renderPermission(); }).catch(e => notice(e.message, true));
-window.desk.currentFolder().then(chosen => { if (chosen) return showFolder(chosen); }).catch(e => notice(e.message, true));
+window.desk.workspaces().then(async r => {
+  workspaces = r.workspaces || [];
+  renderWorkspaces();
+  if (r.active) await showFolder(r.active);
+  else clearWorkspaceView();
+}).catch(e => notice(e.message, true));
 
 function taskStatus(status) { return { starting: '启动中', running: '运行中', completed: '已完成', failed: '失败', stopped: '已停止', unknown: '状态未知' }[status] || status; }
 function taskButton(label, action) { const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = label; button.onclick = () => run(action); return button; }
