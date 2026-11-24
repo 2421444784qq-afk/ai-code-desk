@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+<title>AI Code Desk</title><link rel="stylesheet" href="style.css"></head>
+<body><div class="app">
+<aside class="sidebar">
+  <div class="brand"><span class="brand-mark">✦</span><span>AI Code Desk</span><small>DESKTOP</small></div>
+  <button id="newChat" class="new-chat"><span>＋</span> 新会话</button>
+  <div class="section-heading"><span>会话</span><span class="section-hint">本地保存</span></div><div id="sessions" class="sessions"></div>
+  <div class="section-heading workspace-heading"><span>工作区</span><button id="folderButton" class="icon-button" title="打开项目文件夹">＋</button></div>
+  <div id="workspaceName" class="workspace-name">尚未打开文件夹</div><div id="root" class="root-path"></div>
+  <div id="files" class="file-tree"></div>
+  <div class="sidebar-bottom"><span class="user-dot">●</span> 本地工作区 <span class="version">v0.5</span></div>
+</aside>
+<div class="main-area">
+  <header class="topbar"><div class="title-wrap"><div id="chatTitle" class="chat-title">新会话</div><div id="subtitle" class="subtitle">选择项目文件夹，或直接开始对话</div></div><button id="settingsButton" class="quiet-button">⚙ 连接设置</button></header>
+  <div class="tabs"><button id="chatTab" class="tab active">对话</button><button id="editorTab" class="tab">文件与修改 <span id="selectedBadge"></span></button><button id="tasksTab" class="tab">任务</button><button id="officeTab" class="tab">Office</button></div>
+  <div id="notice" role="status" class="notice">准备就绪</div>
+  <section id="settingsPanel" class="settings-panel" hidden><div class="settings-head"><strong>模型连接</strong><span>密钥保存在本机</span></div>
+    <div class="settings-grid"><label>API 地址<input id="baseUrl" placeholder="https://api.example.com/v1"></label><label>模型名<input id="model" placeholder="模型 ID"></label><label>API Key<input id="key" type="password" placeholder="已保存时留空即可"></label><button id="save" class="primary">保存连接</button></div></section>
+  <section id="chatView" class="chat-view"><div id="messages" class="messages"></div>
+    <div class="composer-wrap"><div class="composer"><textarea id="chatInput" placeholder="发送消息，或提到 function.txt 来读取项目文件…"></textarea>
+      <div class="composer-bottom"><label class="include"><input type="checkbox" id="includeFile"> 始终附带当前文件</label><div class="composer-actions"><span id="currentContext">提到文件名时自动读取</span>
+      <div class="permission-wrap"><button id="permissionButton" class="permission-button" aria-haspopup="menu" aria-expanded="false" title="选择文件操作权限"><span id="permissionIcon">♢</span><span id="permissionLabel">仅可查看</span><span class="chevron">⌄</span></button>
+        <div id="permissionMenu" class="permission-menu" role="menu" hidden>
+          <button class="permission-option" data-mode="view" role="menuitemradio"><span class="permission-glyph">♢</span><span class="permission-copy"><strong>仅可查看</strong></span><span class="permission-check">✓</span></button>
+          <button class="permission-option" data-mode="workspace" role="menuitemradio"><span class="permission-glyph">▱</span><span class="permission-copy"><strong>工作区内修改</strong></span><span class="permission-check">✓</span></button>
+          <button class="permission-option" data-mode="full" role="menuitemradio"><span class="permission-glyph">⬡</span><span class="permission-copy"><strong>完全权限</strong></span><span class="permission-check">✓</span></button>
+          <div class="permission-note">完全权限允许 Agent 运行 PowerShell 命令和启动本机程序；执行过程会显示在对话中。文件修改仍需确认预览。</div>
+        </div></div><button id="stopSend" class="send stop" hidden title="停止生成">■</button><button id="send" class="send" title="发送 (Ctrl+Enter)">↑</button></div></div></div><div class="composer-tip">完全权限下命令在本机运行，结果会发送给模型 · Ctrl+Enter 发送</div></div>
+  </section>
+  <section id="editorView" class="editor-view" hidden><div class="editor-head"><div><div class="eyebrow">当前文件</div><h2 id="selected">未选择文件</h2></div><span class="editor-hint">从左侧工作区选择一个文本文件</span></div>
+    <div class="editor-grid"><div class="source-card"><div class="card-title">文件内容</div><pre id="source">选择左侧文件后查看内容。</pre></div>
+      <div class="edit-card"><div class="card-title">AI 修改建议</div><label for="instruction">描述希望怎样修改当前文件</label><textarea id="instruction" placeholder="例如：给这个函数补充异常处理，其他逻辑保持不变。"></textarea><button id="propose" class="primary">生成修改预览</button><p id="modeHelp" class="muted">仅可查看模式不会修改文件。切换到“工作区内修改”后可生成预览。</p>
+        <div id="undoPanel" class="undo-panel" hidden><span>修改已保存，原文件已备份。</span><button id="undo" class="quiet-button">撤销上次修改</button></div></div></div>
+    <div id="preview" class="preview-card" hidden><div class="card-title">修改差异 <span>请检查删除与新增的行</span></div><pre id="diff"></pre><div class="preview-actions"><button id="apply" class="primary">确认应用修改</button><button id="discard" class="quiet-button">放弃预览</button></div></div>
+  </section>
+  <section id="officeView" class="tasks-view" hidden><div class="tasks-head"><div><div class="eyebrow">本机 Office</div><h2>文档结构与预览</h2><p>选择工作区中的 Word、Excel、PowerPoint 或 Visio 文件，读取结构、导出 PDF 预览，或在副本中编辑。</p></div></div><div class="task-card"><div id="officeSelected" class="card-title">未选择 Office 文件</div><div class="task-actions"><button id="officeInspect" class="quiet-button">读取结构</button><button id="officeExport" class="primary">导出 PDF 预览</button><button id="officeOpen" class="quiet-button" hidden>打开 PDF 预览</button><button id="officeOpenEdited" class="quiet-button" hidden>打开编辑副本</button></div><pre id="officeResult" class="task-detail">选择左侧 Office 文件。</pre>
+  <div id="wordEditPanel" class="office-flow" hidden><h3>Word 编辑副本（原件不变）</h3><textarea id="wordAppend" placeholder="每行一段；以 # 开头为一级标题"></textarea><textarea id="wordTable" placeholder="可选：追加表格，每行用 | 分隔单元格"></textarea><button id="wordEdit" class="primary">在副本中追加内容</button></div>
+  <div id="excelEditPanel" class="office-flow" hidden><h3>Excel 编辑副本（原件不变，写入后重算并检查公式错误）</h3><input id="excelSheet" placeholder="工作表名（默认 Sheet1）"><textarea id="excelCells" placeholder="每行一个单元格，如 A1=123 或 B2==SUM(A1:A3)"></textarea><button id="excelEdit" class="primary">在副本中写入单元格</button></div>
+  <div id="visioEditPanel" class="office-flow" hidden><h3>Visio 编辑副本（原件不变，新增可编辑流程图页）</h3><input id="visioTitle" placeholder="流程图标题"><textarea id="visioSteps" placeholder="每行一个步骤，2 至 8 行"></textarea><button id="visioEdit" class="primary">在副本中绘制流程图</button></div>
+  <div id="flowPanel" class="office-flow"><h3>新增可编辑流程图页（仅 PowerPoint）</h3><input id="flowTitle" placeholder="流程图标题"><textarea id="flowSteps" placeholder="每行一个步骤，2 至 6 行"></textarea><button id="officeFlow" class="primary">在副本中生成流程图</button><button id="officeOpenDeck" class="quiet-button" hidden>打开演示文稿副本</button></div></div></section>
+  <section id="tasksView" class="tasks-view" hidden><div class="tasks-head"><div><div class="eyebrow">后台运行</div><h2>任务与验收</h2><p>长任务可在关闭客户端后继续运行；重开后仍能查询日志和状态。</p></div><button id="refreshTasks" class="quiet-button">刷新状态</button></div><div id="taskList" class="task-list"></div></section>
+</div></div><script src="renderer.js"></script></body></html>

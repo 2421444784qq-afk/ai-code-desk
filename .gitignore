@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.npm-cache/
+.eb-cache/
+.pdf-ocr-tmp/
+electron-node-smoke.txt
+backup-before-terminal/
+ui-backup-20261113/

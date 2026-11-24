@@ -1,0 +1,62 @@
+{
+  "name": "ai-code-desk",
+  "version": "0.5.0",
+  "private": true,
+  "description": "本地 Windows AI 编程客户端：聊天、文件修改、终端执行、后台任务与 Office 副本编辑",
+  "author": "GuoChao",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check task-manager.js && node --check task-worker.js && node --check terminal-runner.js && node --check office-tools.js && node --check project-context.js && node --check asar-path.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.guochao.aicodedesk",
+    "productName": "AI Code Desk",
+    "npmRebuild": false,
+    "directories": { "output": "dist" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "style.css",
+      "project-context.js",
+      "task-manager.js",
+      "task-worker.js",
+      "terminal-runner.js",
+      "office-tools.js",
+      "office-edit.ps1",
+      "office-bridge.ps1",
+      "office-diagram.ps1",
+      "asar-path.js",
+      "build/icon.ico"
+    ],
+    "asarUnpack": [
+      "*.ps1",
+      "task-worker.js"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AI Code Desk"
+    }
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "diff": "^9.0.0"
+  }
+}

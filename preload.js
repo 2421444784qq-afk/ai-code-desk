@@ -1,0 +1,26 @@
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('desk', {
+  config: () => ipcRenderer.invoke('config:get'),
+  saveConfig: (data) => ipcRenderer.invoke('config:save', data),
+  setPermission: (mode) => ipcRenderer.invoke('permission:set', mode),
+  chooseFolder: () => ipcRenderer.invoke('folder:choose'),
+  currentFolder: () => ipcRenderer.invoke('folder:current'),
+  list: (relative) => ipcRenderer.invoke('folder:list', relative),
+  read: (relative) => ipcRenderer.invoke('file:read', relative),
+  inspectOffice: (relative) => ipcRenderer.invoke('office:inspect', relative),
+  exportOffice: (relative) => ipcRenderer.invoke('office:export', relative),
+  editOffice: (relative, kind, spec) => ipcRenderer.invoke('office:edit', relative, kind, spec),
+  addFlowSlide: (relative, title, steps) => ipcRenderer.invoke('office:flow', relative, title, steps),
+  openOfficePreview: (file) => ipcRenderer.invoke('office:open', file),
+  chat: (messages, file, forceSelected, requestId) => ipcRenderer.invoke('ai:chat', messages, file, forceSelected, requestId),
+  stopChat: (requestId) => ipcRenderer.invoke('ai:stop', requestId),
+  onChatChunk: (handler) => { const listener = (_, event) => handler(event); ipcRenderer.on('ai:chunk', listener); return () => ipcRenderer.removeListener('ai:chunk', listener); },
+  onToolEvent: (handler) => { const listener = (_, event) => handler(event); ipcRenderer.on('ai:tool-event', listener); return () => ipcRenderer.removeListener('ai:tool-event', listener); },
+  listTasks: () => ipcRenderer.invoke('task:list'),
+  inspectTask: (id) => ipcRenderer.invoke('task:inspect', id),
+  verifyTask: (id) => ipcRenderer.invoke('task:verify', id),
+  stopTask: (id) => ipcRenderer.invoke('task:stop', id),
+  propose: (relative, instruction) => ipcRenderer.invoke('ai:propose', relative, instruction),
+  apply: (proposalId) => ipcRenderer.invoke('file:apply', proposalId),
+  undo: (backupId) => ipcRenderer.invoke('file:undo', backupId)
+});
