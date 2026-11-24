@@ -1,4 +1,4 @@
-# AI Code Desk · v0.5
+# AI Code Desk · v0.6
 
 本地 Windows AI 编程客户端：兼容 OpenAI Chat Completions 接口，自带 API Key；支持流式对话（可停止生成）、打开项目文件夹、按文件名读取文件、在完全权限下由 Agent 调用 PowerShell、后台长任务与产物验收、文件修改预览（应用/撤销），以及 Word / Excel / PowerPoint / Visio 的结构读取、PDF 预览与副本编辑。
 
