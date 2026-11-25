@@ -119,6 +119,11 @@ function makeRow(item, holder) {
   const label = document.createElement('span'); label.textContent = item.name; row.append(icon, label); row.title = item.relative; holder.append(row);
   if (item.directory) { const children = document.createElement('div'); children.className = 'children'; children.hidden = true; holder.append(children);
     row.onclick = () => run(async () => { if (children.hidden && !children.childElementCount) { const items = await window.desk.list(item.relative); items.forEach(x => makeRow(x, children)); } children.hidden = !children.hidden; icon.textContent = children.hidden ? '▸' : '▾'; });
+  } else if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(item.name)) { row.onclick = () => run(async () => {
+    const r = await window.desk.attachFile(item.relative);
+    uploads.push(r); renderUploads();
+    notice('已附加图片：' + r.name + '。发送聊天时随附给 AI 识别。');
+  });
   } else if (/\.(docx?|xlsx?|xlsm|pptx?|vsdx?)$/i.test(item.name)) { row.onclick = () => { officeCurrent = item.relative; officePreview = ''; officeEdited = ''; $('officeSelected').textContent = item.relative; $('officeResult').textContent = '可以读取结构、导出 PDF 预览，或在副本中编辑。'; $('officeOpen').hidden = true; $('officeOpenEdited').hidden = true; refreshOfficePanels(); tab('office'); }; 
   } else { row.onclick = () => run(async () => { const file = await window.desk.read(item.relative); current = file.relative; $('selected').textContent = current; $('selectedBadge').textContent = '· ' + item.name; $('source').textContent = file.text; $('currentContext').textContent = '当前：' + item.name; $('preview').hidden = true; proposalId = ''; document.querySelectorAll('.file-row.selected').forEach(x => x.classList.remove('selected')); row.classList.add('selected'); notice('已读取 ' + current); tab('editor'); }); }
 }

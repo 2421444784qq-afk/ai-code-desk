@@ -1,4 +1,4 @@
-# AI Code Desk · v0.7
+# AI Code Desk · v0.7.2
 
 本地 Windows AI 编程客户端：兼容 OpenAI Chat Completions 接口，自带 API Key；支持流式对话（可停止生成）、文件上传与解析（TXT/MD/PY/DOCX/PDF/PNG/JPG/XLSX/PPTX）、打开项目文件夹、按文件名读取文件、在完全权限下由 Agent 调用 PowerShell、后台长任务与产物验收、文件修改预览（应用/撤销），以及 Word / Excel / PowerPoint / Visio 的结构读取、PDF 预览与副本编辑。
 
@@ -29,7 +29,7 @@ npm.cmd start
 - **XLSX**：提取各工作表名称与前 200 行数据（公式单元格显示缓存值）
 - **PPTX**：提取每页幻灯片文本并统计内嵌图片数
 - **PDF**：提取文本（支持 ToUnicode 与 UTF-8/Identity 编码）；扫描件（文本极少）暂不支持 OCR，会给出提示
-- **PNG / JPG** 等图片：以 base64 直接发给模型做视觉识别（需要所配置的模型支持图片输入）
+- **PNG / JPG** 等图片：转为 base64 放进 `image_url` 内容块发送（OpenAI 多模态格式），在对话中提到图片文件名或点击文件树中的图片也会自动随附（需要所配置的模型支持图片输入）
 
 限制：文件不超过 10 MB、图片不超过 4 MB、提取文本不超过 20 万字符、一次最多 4 张图片。所有解析都在本机完成，无需外部服务。
 
