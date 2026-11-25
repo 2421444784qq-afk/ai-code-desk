@@ -191,7 +191,7 @@ async function send() {
   try {
     const history = s.messages.filter(m => (m.role === 'user' || m.role === 'assistant') && m !== assistantEntry).slice(-20);
     const result = await window.desk.chat(history, current, $('includeFile').checked, requestId);
-    if (result.answer && typeof result.answer === 'string' && !assistantEntry.content) assistantEntry.content = result.answer;
+    if (result.answer && typeof result.answer === 'string' && assistantEntry.content !== result.answer) assistantEntry.content = result.answer;
     if (result.stopped && !assistantEntry.content) assistantEntry.content = '（已停止生成。）';
     persist(); renderMessages();
     notice(result.files.length ? '已读取并发送文件：' + result.files.join('、') : (result.stopped ? '已停止生成。' : '回复完成。'));
