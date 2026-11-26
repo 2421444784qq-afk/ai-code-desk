@@ -31,3 +31,32 @@
 .upload-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
 .upload-remove{border:0;background:transparent;color:#9aa6b8;font-size:11px;padding:2px 5px;border-radius:50%}
 .upload-remove:hover{background:#f3d8dc;color:#b14c5b}
+
+/* 0.7.5: each conversation lives directly below its workspace. */
+.workspaces{flex:1;min-height:80px;max-height:none;overflow:auto;padding:2px 0 12px}
+.workspace-group{margin:3px 0 11px}
+.workspace-item{gap:1px}
+.workspace-row{font-size:13px;font-weight:650;padding:9px 6px}
+.workspace-row.active{background:#eaf0ff}
+.workspace-add,.session-assign{border:0;background:transparent;color:#8090ad;border-radius:7px;padding:5px 6px;font-size:14px;flex:none}
+.workspace-add:hover,.session-assign:hover{background:#e8eefb;color:#3157c5}
+.workspace-sessions{margin:2px 0 0 13px;padding-left:7px;border-left:1px solid #dfe5ef}
+.workspace-sessions .session-row{padding:8px 5px;font-size:12.5px}
+.workspace-sessions .session-item{border-radius:8px}
+.workspace-sessions .session-item:has(.session-row.active){background:#e7edff}
+.workspace-sessions .session-row.active{background:transparent}
+.workspace-legacy-title{font-size:11px;color:#8b96a7;margin:14px 5px 6px}
+.archived-label{font-size:12px;color:#77879e;padding:4px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session-assign{font-size:11px}
+.files-panel{flex:none;border-top:1px solid #e1e5ec;max-height:210px;overflow:auto;padding:8px 3px}
+.files-panel summary{cursor:pointer;color:#66758e;font-size:12px;padding:5px 9px}
+.files-panel .file-tree{max-height:140px;overflow:auto}
+.sidebar-bottom{flex:none}
+.message.activity .message-body{white-space:pre-wrap}
+.message.activity.failed{border-color:#ead4d8;background:#fff9fa}
+.tool-detail{margin-top:7px}
+.tool-detail summary{cursor:pointer;color:#6480ae;font:11px/1.5 "Microsoft YaHei",sans-serif}
+.tool-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;margin:7px 0 0;font:11px/1.5 Consolas,monospace;color:#586781}
+
+.empty-session{border:0;background:transparent;color:#90a0b7;border-radius:7px;text-align:left;padding:8px 6px;font-size:12px;width:100%}
+.empty-session:hover{background:#eaf0fc;color:#4566bf}

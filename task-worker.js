@@ -28,7 +28,8 @@ function logTo(file, stream) {
 const utf8 = '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding; ';
 try {
   const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', utf8 + meta.command], {
-    cwd: meta.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+    cwd: meta.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
   });
   save({ status: 'running', commandPid: child.pid });
   logTo(logPath, child.stdout);

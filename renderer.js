@@ -7,7 +7,18 @@ let uploads = [];
 const pendingToolSessions = new Map();
 const pendingAssistants = new Map();
 try { sessions = JSON.parse(localStorage.getItem(storageKey) || '[]'); if (!Array.isArray(sessions)) sessions = []; } catch { sessions = []; }
-function persist() { try { localStorage.setItem(storageKey, JSON.stringify(sessions.slice(0, 30))); } catch {} }
+for (const s of sessions) for (const m of (Array.isArray(s.messages) ? s.messages : [])) {
+  if (m.role === 'activity' && !m.raw && typeof m.content === 'string' && m.content.startsWith('工具：') && m.content.length > 800) {
+    m.raw = m.content; m.content = m.content.split('\n')[0] + ' · 历史执行记录';
+  }
+}
+let persistTimer;
+function persist() {
+  const snapshot = sessions.slice(0, 50);
+  try { localStorage.setItem(storageKey, JSON.stringify(snapshot)); } catch {}
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => window.desk.saveSessions(snapshot).catch(e => notice('会话保存失败：' + e.message, true)), 250);
+}
 function active() { return sessions.find(s => s.id === activeId); }
 function notice(message, error = false) { $('notice').textContent = message; $('notice').style.color = error ? '#b14c5b' : '#7385a2'; }
 async function run(fn) { if (busy) return; busy = true; document.querySelectorAll('button').forEach(b => { if (b.id !== 'stopSend') b.disabled = true; }); try { await fn(); } catch (e) { notice(e.message || String(e), true); } finally { busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false); $('send').hidden = false; $('stopSend').hidden = true; renderPermission(); } }
@@ -37,47 +48,97 @@ $('editorTab').onclick = () => tab('editor');
 $('tasksTab').onclick = () => tab('tasks');
 $('officeTab').onclick = () => tab('office');
 $('settingsButton').onclick = () => { $('settingsPanel').hidden = !$('settingsPanel').hidden; };
-function renderSessions() {
-  const list = $('sessions'); list.replaceChildren();
-  for (const s of sessions) {
-    const item = document.createElement('div'); item.className = 'session-item';
-    const b = document.createElement('button'); b.className = 'session-row' + (s.id === activeId ? ' active' : ''); b.textContent = '☷  ' + s.title; b.title = s.title;
-    b.onclick = () => { activeId = s.id; renderSessions(); renderMessages(); };
-    const del = document.createElement('button'); del.className = 'session-delete'; del.textContent = '✕'; del.title = '删除会话'; del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
-    item.append(b, del); list.append(item);
+function renderSessions() { renderWorkspaces(); }
+function sessionRow(s, target) {
+  const item = document.createElement('div'); item.className = 'session-item';
+  const b = document.createElement('button'); b.className = 'session-row' + (s.id === activeId ? ' active' : '');
+  b.textContent = '　' + (s.title || '新会话'); b.title = s.title || '新会话';
+  b.onclick = () => run(async () => {
+    if (s.workspacePath && !workspaces.some(w => w.path === s.workspacePath)) {
+      activeId = s.id; renderSessions(); renderMessages(); tab('chat');
+      return notice('这个工作区已从列表移除；重新添加同一文件夹后才能继续对话。', true);
+    }
+    if (s.workspacePath && s.workspacePath !== folder) {
+      await window.desk.selectFolder(s.workspacePath);
+      await showFolder(s.workspacePath, s.id);
+    } else { activeId = s.id; persist(); renderSessions(); renderMessages(); tab('chat'); }
+  });
+  const del = document.createElement('button'); del.className = 'session-delete'; del.textContent = '✕'; del.title = '删除会话';
+  del.onclick = e => { e.stopPropagation(); deleteSession(s.id); };
+  item.append(b, del);
+  if (!s.workspacePath) {
+    const assign = document.createElement('button'); assign.className = 'session-assign'; assign.textContent = '归入';
+    assign.title = '把历史会话归入当前工作区';
+    assign.onclick = e => { e.stopPropagation(); if (busy) return; if (!folder) return notice('先打开要归入的工作区。', true);
+      s.workspacePath = folder; activeId = s.id; persist(); renderSessions(); renderMessages(); };
+    item.append(assign);
   }
+  target.append(item);
 }
 function deleteSession(id) {
   const s = sessions.find(x => x.id === id);
-  if (!s) return;
-  if (!confirm('删除会话「' + (s.title || '新会话') + '」？此操作不可恢复。')) return;
+  if (!s || !confirm('删除会话「' + (s.title || '新会话') + '」？此操作不可恢复。')) return;
   sessions = sessions.filter(x => x.id !== id);
-  if (!sessions.length) { newSession(); return; }
-  if (activeId === id) activeId = sessions[0].id;
-  persist(); renderSessions(); renderMessages();
+  if (activeId === id) activeId = '';
+  if (folder && !active()) ensureWorkspaceSession(folder);
+  else { if (!active()) activeId = sessions[0]?.id || ''; persist(); renderSessions(); renderMessages(); }
+}
+function ensureWorkspaceSession(path, preferredId = '') {
+  let s = sessions.find(x => x.id === preferredId && x.workspacePath === path)
+    || sessions.find(x => x.workspacePath === path);
+  if (!s) { s = { id: crypto.randomUUID(), title: '新会话', workspacePath: path, messages: [] }; sessions.unshift(s); }
+  activeId = s.id; persist(); renderSessions(); renderMessages();
 }
 function renderWorkspaces() {
   const list = $('workspaces'); list.replaceChildren();
   for (const w of workspaces) {
+    const group = document.createElement('div'); group.className = 'workspace-group';
     const item = document.createElement('div'); item.className = 'workspace-item';
-    const b = document.createElement('button'); b.className = 'workspace-row' + (w.path === folder ? ' active' : ''); b.textContent = '▱  ' + w.name; b.title = w.path;
+    const b = document.createElement('button'); b.className = 'workspace-row' + (w.path === folder ? ' active' : '');
+    b.textContent = '▱  ' + w.name; b.title = w.path;
     b.onclick = () => run(async () => {
-      if (w.path === folder) return;
-      const r = await window.desk.selectFolder(w.path);
-      folder = r.root; current = '';
-      await showFolder(r.root);
-      renderWorkspaces();
+      if (w.path !== folder) { await window.desk.selectFolder(w.path); await showFolder(w.path); }
+      else { ensureWorkspaceSession(w.path); tab('chat'); }
     });
-    const del = document.createElement('button'); del.className = 'workspace-delete'; del.textContent = '✕'; del.title = '从列表移除（不删除磁盘文件）';
-    del.onclick = (e) => { e.stopPropagation(); run(async () => {
-      if (!confirm('从工作区列表移除「' + w.name + '」？\n磁盘上的文件不会被删除。')) return;
-      const r = await window.desk.removeFolder(w.path);
-      workspaces = r.workspaces;
-      if (r.active) { folder = r.active; await showFolder(r.active); }
-      else { folder = ''; clearWorkspaceView(); }
-      renderWorkspaces();
+    const plus = document.createElement('button'); plus.className = 'workspace-add'; plus.textContent = '＋'; plus.title = '在这个工作区新建会话';
+    plus.onclick = e => { e.stopPropagation(); run(async () => {
+      if (w.path !== folder) { await window.desk.selectFolder(w.path); await showFolder(w.path); }
+      newSession(w.path);
     }); };
-    item.append(b, del); list.append(item);
+    const del = document.createElement('button'); del.className = 'workspace-delete'; del.textContent = '✕'; del.title = '从列表移除（不删除磁盘文件或会话）';
+    del.onclick = e => { e.stopPropagation(); run(async () => {
+      if (!confirm('从工作区列表移除「' + w.name + '」？\n文件和会话均会保留。')) return;
+      const r = await window.desk.removeFolder(w.path); workspaces = r.workspaces;
+      if (r.active) await showFolder(r.active);
+      else { folder = ''; activeId = ''; clearWorkspaceView(); renderSessions(); renderMessages(); }
+    }); };
+    item.append(b, plus, del); group.append(item);
+    const children = document.createElement('div'); children.className = 'workspace-sessions';
+    const belonging = sessions.filter(s => s.workspacePath === w.path);
+    belonging.forEach(s => sessionRow(s, children));
+    if (!belonging.length) {
+      const empty = document.createElement('button'); empty.className = 'empty-session'; empty.textContent = '＋ 开始对话';
+      empty.onclick = () => run(async () => { if (w.path !== folder) { await window.desk.selectFolder(w.path); await showFolder(w.path); } else newSession(w.path); });
+      children.append(empty);
+    }
+    group.append(children); list.append(group);
+  }
+  const legacy = sessions.filter(s => !s.workspacePath);
+  if (legacy.length) {
+    const header = document.createElement('div'); header.className = 'workspace-legacy-title'; header.textContent = '历史会话 · 未关联工作区';
+    list.append(header);
+    const group = document.createElement('div'); group.className = 'workspace-sessions legacy-sessions';
+    legacy.forEach(s => sessionRow(s, group)); list.append(group);
+  }
+  const known = new Set(workspaces.map(w => w.path));
+  const archived = [...new Set(sessions.map(s => s.workspacePath).filter(p => p && !known.has(p)))];
+  if (archived.length) {
+    const header = document.createElement('div'); header.className = 'workspace-legacy-title'; header.textContent = '已移除工作区（重新添加可继续）'; list.append(header);
+    for (const root of archived) {
+      const label = document.createElement('div'); label.className = 'archived-label'; label.textContent = root.split(/[\\/]/).filter(Boolean).at(-1); label.title = root; list.append(label);
+      const group = document.createElement('div'); group.className = 'workspace-sessions legacy-sessions';
+      sessions.filter(s => s.workspacePath === root).forEach(s => sessionRow(s, group)); list.append(group);
+    }
   }
 }
 function clearWorkspaceView() {
@@ -91,11 +152,12 @@ function clearWorkspaceView() {
   $('preview').hidden = true; $('undoPanel').hidden = true;
   refreshOfficePanels();
 }
-function newSession() {
-  const s = { id: crypto.randomUUID(), title: '新会话', messages: [] };
+function newSession(path = folder) {
+  if (!path) return notice('请先打开一个工作区，再新建对话。', true);
+  const s = { id: crypto.randomUUID(), title: '新会话', workspacePath: path, messages: [] };
   sessions.unshift(s); activeId = s.id; persist(); renderSessions(); renderMessages(); tab('chat');
 }
-$('newChat').onclick = newSession;
+$('newChat').onclick = () => newSession();
 function renderMessages() {
   const s = active(), list = $('messages'); list.replaceChildren();
   $('chatTitle').textContent = s?.title || '新会话';
@@ -109,6 +171,13 @@ function renderMessages() {
       const imgs = m.content.filter(p => p.type === 'image_url').length;
       body.textContent = texts + (imgs ? (texts ? '\n' : '') + '[已上传 ' + imgs + ' 张图片]' : '');
     } else body.textContent = m.content;
+    if (m.role === 'activity' && m.raw) {
+      const detail = document.createElement('details'); detail.className = 'tool-detail';
+      const summary = document.createElement('summary'); summary.textContent = '查看完整命令与结果';
+      const pre = document.createElement('pre'); pre.textContent = m.raw;
+      detail.append(summary, pre); body.append(detail);
+      if (m.failed) box.classList.add('failed');
+    }
     box.append(label, body); list.append(box);
   }
   list.scrollTop = list.scrollHeight;
@@ -128,7 +197,7 @@ function makeRow(item, holder) {
   } else { row.onclick = () => run(async () => { const file = await window.desk.read(item.relative); current = file.relative; $('selected').textContent = current; $('selectedBadge').textContent = '· ' + item.name; $('source').textContent = file.text; $('currentContext').textContent = '当前：' + item.name; $('preview').hidden = true; proposalId = ''; document.querySelectorAll('.file-row.selected').forEach(x => x.classList.remove('selected')); row.classList.add('selected'); notice('已读取 ' + current); tab('editor'); }); }
 }
 async function listRoot() { const items = await window.desk.list(''); const tree = $('files'); tree.replaceChildren(); items.forEach(x => makeRow(x, tree)); }
-async function showFolder(chosen) { folder = chosen; current = ''; officeCurrent = ''; officePreview = ''; officeEdited = ''; proposalId = ''; backupId = ''; $('workspaceName').textContent = '▱  ' + chosen.split(/[\\/]/).filter(Boolean).at(-1); $('root').textContent = chosen; $('selected').textContent = '未选择文件'; $('selectedBadge').textContent = ''; $('source').textContent = '选择左侧文件后查看内容。'; $('currentContext').textContent = '提到文件名时自动读取'; $('preview').hidden = true; $('undoPanel').hidden = true; $('subtitle').textContent = chosen; refreshOfficePanels(); renderWorkspaces(); await listRoot(); notice('已打开项目：' + chosen); }
+async function showFolder(chosen, preferredId = '') { folder = chosen; current = ''; officeCurrent = ''; officePreview = ''; officeEdited = ''; proposalId = ''; backupId = ''; $('workspaceName').textContent = '▱  ' + chosen.split(/[\\/]/).filter(Boolean).at(-1); $('root').textContent = chosen; $('selected').textContent = '未选择文件'; $('selectedBadge').textContent = ''; $('source').textContent = '选择左侧文件后查看内容。'; $('currentContext').textContent = '提到文件名时自动读取'; $('preview').hidden = true; $('undoPanel').hidden = true; $('subtitle').textContent = chosen; refreshOfficePanels(); await listRoot(); ensureWorkspaceSession(chosen, preferredId); notice('已打开项目：' + chosen); }
 $('folderButton').onclick = () => run(async () => { const r = await window.desk.chooseFolder(); if (!r) return; workspaces = r.workspaces; await showFolder(r.root); renderWorkspaces(); });
 $('save').onclick = () => run(async () => { const config = await window.desk.saveConfig({ baseUrl: $('baseUrl').value, model: $('model').value, key: $('key').value }); $('key').value = ''; $('key').placeholder = config.hasKey ? '已安全保存；留空保持原密钥' : 'API Key'; $('settingsPanel').hidden = true; notice('模型连接已保存。'); });
 $('propose').onclick = () => run(async () => { if (!current) throw Error('请先从左侧选择一个文本文件。'); notice('AI 正在生成修改建议…'); const result = await window.desk.propose(current, $('instruction').value); if (!result.changed) { notice('模型没有修改文件。'); return; } proposalId = result.id; $('diff').textContent = result.diff; $('preview').hidden = false; $('preview').scrollIntoView({ behavior: 'smooth' }); notice('请检查差异，确认后才会写入文件。'); });
@@ -174,6 +243,7 @@ async function send() {
   if (!input && !uploads.length) return;
   if ($('includeFile').checked && !current) throw Error('请先选择文件，或取消“始终附带当前文件”。');
   const s = active();
+  if (!folder || !s || s.workspacePath !== folder) throw Error('请先选择工作区内的对话；历史会话需先归入当前工作区。');
   const requestId = crypto.randomUUID();
   currentRequestId = requestId;
   const userEntry = { role: 'user', content: buildUploadContent(input) };
@@ -204,8 +274,10 @@ async function send() {
     pendingToolSessions.delete(requestId);
     pendingAssistants.delete(requestId);
     if (currentRequestId === requestId) currentRequestId = '';
+    $('send').hidden = false; $('stopSend').hidden = true;
   }
 }
+window.desk.onChatReset(event => { const slot = pendingAssistants.get(event.requestId); if (slot) { slot.message.content = ''; persist(); renderMessages(); } });
 window.desk.onChatChunk(event => {
   const slot = pendingAssistants.get(event.requestId);
   if (!slot) return;
@@ -219,26 +291,46 @@ window.desk.onToolEvent(event => {
   const id = pendingToolSessions.get(event.requestId), s = sessions.find(item => item.id === id);
   if (!s) return;
   const previous = [...s.messages].reverse().find(m => m.role === 'activity' && m.requestId === event.requestId && m.command === event.command && m.running);
-  if (event.stage === 'running') s.messages.push({ role: 'activity', requestId: event.requestId, command: event.command, running: true, content: '调用工具：' + event.command + '\n执行中…' });
+  if (event.stage === 'running') s.messages.push({ role: 'activity', requestId: event.requestId, command: event.command, running: true, content: '正在运行 ' + event.command.split(':')[0] + '…' });
   else {
     const r = event.result || {};
-    const content = '工具：' + event.command + '\n' + JSON.stringify(r, null, 2).slice(0, 16000);
-    if (previous) { previous.running = false; previous.content = content; } else s.messages.push({ role: 'activity', requestId: event.requestId, command: event.command, content });
+    const failed = !!r.error || (typeof r.exitCode === 'number' && r.exitCode !== 0) || !!r.timedOut;
+    const status = r.error ? '失败：' + r.error : r.timedOut ? '超时' : typeof r.exitCode === 'number' ? '退出码 ' + r.exitCode : '已完成';
+    const excerpt = String(r.stdout || r.stderr || '').trim().slice(0, 700);
+    const content = event.command.split(':')[0] + ' · ' + status + (excerpt ? '\n' + excerpt + (r.truncated ? '\n[输出已截断]' : '') : '');
+    const raw = '命令：' + event.command + '\n' + JSON.stringify(r, null, 2).slice(0, 16000);
+    if (previous) Object.assign(previous, { running: false, content, raw, failed });
+    else s.messages.push({ role: 'activity', requestId: event.requestId, command: event.command, content, raw, failed });
   }
   persist(); if (activeId === s.id) renderMessages();
   if (event.stage === 'done' && event.command?.startsWith('start_task')) refreshTasks().catch(() => {});
 });
 $('send').onclick = () => run(send);
 $('chatInput').onkeydown = e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); run(send); } };
-if (!sessions.length) newSession(); else { activeId = sessions[0].id; renderSessions(); renderMessages(); }
 renderPermission();
 window.desk.config().then(c => { $('baseUrl').value = c.baseUrl; $('model').value = c.model; $('key').placeholder = c.hasKey ? '已安全保存；留空保持原密钥' : 'API Key'; if (!c.hasKey) $('settingsPanel').hidden = false; permissionMode = c.permissionMode || 'view'; renderPermission(); }).catch(e => notice(e.message, true));
-window.desk.workspaces().then(async r => {
-  workspaces = r.workspaces || [];
-  renderWorkspaces();
-  if (r.active) await showFolder(r.active);
-  else clearWorkspaceView();
-}).catch(e => notice(e.message, true));
+async function initializeSessions() {
+  try {
+    const disk = await window.desk.loadSessions();
+    const merged = new Map();
+    for (const s of [...(Array.isArray(disk) ? disk : []), ...sessions]) {
+      if (s && typeof s.id === 'string' && Array.isArray(s.messages) && !merged.has(s.id)) merged.set(s.id, s);
+    }
+    sessions = [...merged.values()].slice(0, 50);
+    for (const s of sessions) for (const m of s.messages) {
+      if (m.role === 'activity' && !m.raw && typeof m.content === 'string' && m.content.startsWith('工具：') && m.content.length > 800) {
+        m.raw = m.content; m.content = m.content.split('\n')[0] + ' · 历史执行记录';
+      }
+    }
+    activeId = sessions[0]?.id || ''; renderSessions(); renderMessages();
+    const r = await window.desk.workspaces();
+    workspaces = r.workspaces || [];
+    if (r.active) await showFolder(r.active);
+    else { clearWorkspaceView(); renderSessions(); }
+    persist();
+  } catch (e) { notice('会话加载失败：' + e.message, true); }
+}
+initializeSessions();
 
 function taskStatus(status) { return { starting: '启动中', running: '运行中', completed: '已完成', failed: '失败', stopped: '已停止', unknown: '状态未知' }[status] || status; }
 function taskButton(label, action) { const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = label; button.onclick = () => run(action); return button; }

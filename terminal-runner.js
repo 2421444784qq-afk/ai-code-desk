@@ -10,7 +10,8 @@ async function runTerminal(command, cwd, fallback = '') {
   return new Promise((resolve, reject) => {
     const utf8Command = '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding; ' + command;
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', utf8Command], {
-      cwd: directory, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+      cwd: directory, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
     });
     let stdout = '', stderr = '', truncated = false, timedOut = false;
     const capture = (target, chunk) => {

@@ -13,6 +13,12 @@ test('runs a read-only PowerShell command and captures output', async () => {
 test('rejects an empty command', async () => {
   await assert.rejects(runTerminal('', '', os.tmpdir()), /命令/);
 });
+test('preserves Unicode emitted by a Python child process on Windows', async () => {
+  const result = await runTerminal('python -c "print(chr(0x25aa)); print(chr(0x4e2d))"', '', os.tmpdir());
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /▪\s+中/);
+  assert.equal(result.stderr, '');
+});
 test('preserves Chinese characters in PowerShell output', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), '测试目录-'));
   try {

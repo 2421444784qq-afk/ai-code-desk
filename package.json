@@ -1,6 +1,6 @@
 {
   "name": "ai-code-desk",
-  "version": "0.7.3",
+  "version": "0.7.6",
   "private": true,
   "description": "本地 Windows AI 编程客户端：聊天、文件修改、终端执行、后台任务与 Office 副本编辑",
   "author": "GuoChao",
@@ -16,7 +16,9 @@
     "appId": "com.guochao.aicodedesk",
     "productName": "AI Code Desk",
     "npmRebuild": false,
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "main.js",
       "preload.js",
@@ -41,8 +43,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.ico"
     },
